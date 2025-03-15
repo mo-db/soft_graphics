@@ -1,5 +1,5 @@
 ## Blueprint Makefile
-SRC_FILES := ex
+SRC_FILES := tex_streaming_01
 SRC_DIR := src
 OBJ_DIR := obj
 BIN_DIR := bin
