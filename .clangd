@@ -1,4 +1,4 @@
 CompileFlags:
   Add: [
-    src, -I/opt/homebrew/Cellar/sdl3/3.2.2/include 
+    src, -I/opt/homebrew/Cellar/sdl3/3.2.8/include 
   ]
