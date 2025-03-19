@@ -12,6 +12,8 @@
 
 #define OBJECTS_MAX 1000
 
+#define DEBUG
+
 SDL_Window *window = NULL;
 SDL_Renderer *renderer = NULL;
 SDL_Texture *texture_window = NULL;
@@ -23,6 +25,8 @@ int keep_running = true;
 bool lock = 0;
 int pix_cnt = 0;
 bool line_first_point = 1;
+bool first_run = 1;
+int scale_var = 3;
 
 enum mode_list {
 	NORMAL,
@@ -75,11 +79,18 @@ int main()
 	Objects objects;
 	objects_init(&objects);
 
+	// for testing draw line not in loop but on key press, print all vars also
+	// generally for testing purposes maybe ifdef testing some printf's 
+	// and have the poissibillity to run all drawing for all objects only once
+	// on keypress
+	
 	while (keep_running) {
 		keyStates = SDL_GetKeyboardState(numkeys);
 		process_event(&appstate, &objects);
 		objects_create(&appstate, &objects);
+#ifndef DEBUG
 		draw(&appstate, &objects);
+#endif
 		SDL_DelayNS(1000);
 	}
 	objects_destroy(&objects);
@@ -179,6 +190,14 @@ void process_event(Appstate* appstate, Objects* objects)
 								  objects->l2d[0].p2.x, objects->l2d[0].p2.y);
 					  }
 					  break;
+				  case SDLK_R:
+					  draw(appstate, objects);
+					  break;
+				  case SDLK_C:
+					  if (objects->l2d_index > 0) {
+						  objects->l2d_index--;
+					  }
+					  break;
                }
                break;
 		  case SDL_EVENT_MOUSE_MOTION:
@@ -216,13 +235,13 @@ int objects_create(Appstate* appstate, Objects* objects)
 		case LINE:
 			if (appstate->mouse_left_down && !lock) { // make point
 				if (line_first_point) {
-					objects->l2d[objects->l2d_index].p1.x = appstate->mouse_x + 0.5;
-					objects->l2d[objects->l2d_index].p1.y = appstate->mouse_y + 0.5;
+					objects->l2d[objects->l2d_index].p1.x = appstate->mouse_x;
+					objects->l2d[objects->l2d_index].p1.y = appstate->mouse_y;
 					line_first_point = 0;
 					lock = 1;
 				} else {
-					objects->l2d[objects->l2d_index].p2.x = appstate->mouse_x + 0.5;
-					objects->l2d[objects->l2d_index].p2.y = appstate->mouse_y + 0.5;
+					objects->l2d[objects->l2d_index].p2.x = appstate->mouse_x;
+					objects->l2d[objects->l2d_index].p2.y = appstate->mouse_y;
 					line_first_point = 1;
 					lock = 1;
 					objects->l2d_index++;
@@ -245,13 +264,39 @@ void draw(Appstate* appstate, Objects* objects)
     if (SDL_LockTexture(texture_window, NULL, &pixels, &pitch)) {
 		uint32_t* pixs = pixels;
 		if (pix_cnt == (WINDOW_WIDTH * WINDOW_HEIGHT)) { pix_cnt = 0; }
-		pixs[pix_cnt++] = 0xFF0000FF;
-		/* int px = 0; */
-		/* int py = 0; */
-		/* for (int i = 0; i < objects->p2d_index; i++) { */
-		/* 	px = objects->p2d[i].x; */
-		/* 	py = objects->p2d[i].y; */
-		/* } */
+		/* pixs[pix_cnt++] = 0xFF0000FF; */
+
+		for (int l2d_cnt = 0; l2d_cnt < objects->l2d_index; l2d_cnt++) {
+			int x0 = SDL_lround(objects->l2d->p1.x);
+			int y0 = SDL_lround(objects->l2d->p1.y);
+			int x1 = SDL_lround(objects->l2d->p2.x);
+			int y1 = SDL_lround(objects->l2d->p2.y);
+			// midpoint line
+			int dx = x1 - x0;
+			int dy = y1 - y0;
+			int d = 2 * dy - dx; // initial decision variable
+			int incrE = 2 * dy;
+			int incrNE = 2 * (dy - dx);
+			int x = x0;
+			int y = y0;
+#ifdef DEBUG
+			printf("l2d_index: %d\n", objects->l2d_index);
+			printf("(x0,y0),(x1,y1): (%d,%d),(%d,%d)\n", x0, y0, x1, y1);
+			printf("dx, dy, d: %d, %d, %d\n", dx, dy, d);
+#endif
+			pixs[x + y * WINDOW_WIDTH] = 0x00FF00FF;
+			while (x < x1) {
+				if (d <= 0) { // works if d is big number, just check sign
+					d += incrE;
+					x++;
+				} else {
+					d += incrNE;
+					x++;
+					y++;
+				}
+				pixs[x + y * WINDOW_WIDTH] = 0x00FF00FF;
+			}
+		}
         SDL_UnlockTexture(texture_window);  /* upload the changes (and frees the temporary surface)! */
     }
     /* Center this one. It'll draw the latest version of the texture we drew while it was locked. */
@@ -262,6 +307,14 @@ void draw(Appstate* appstate, Objects* objects)
     SDL_RenderTexture(renderer, texture_window, NULL, &dst_rect);
     SDL_RenderPresent(renderer);  /* put it all on the screen! */
 }
+
+
+void graphics(Objects* objects)
+{
+
+}
+
+
 
 int objects_destroy(Objects* objects)
 {
