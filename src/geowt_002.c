@@ -22,6 +22,7 @@ typedef enum {
   NORMAL,
   POINT,
   LINE,
+	CIRCLE,
 } AppMode;
 
 typedef enum {
@@ -52,6 +53,7 @@ typedef struct {
   double x;
   double y;
   uint32_t color;
+	ObjectStatus status;
 } Point2D;
 
 typedef struct {
@@ -63,7 +65,7 @@ typedef struct {
 
 typedef struct {
 	Point2D center;
-	uint32_t radius;
+	double radius;
   uint32_t color;
 	ObjectStatus status;
 } Circle2D;
@@ -84,6 +86,8 @@ typedef struct {
 void vector_append(ObjectBuf *ctx);
 void vector_pop(ObjectBuf *ctx, uint32_t index);
 void vector_destroy(ObjectBuf *ctx);
+
+void calc_intersection(ObjectBuf *buf);
 
 int app_init(AppState *app_state);
 int objects_init(Objects *objects);
@@ -124,25 +128,22 @@ int app_init(AppState *app_state) {
 
 	app_state->window = NULL;
 	app_state->renderer = NULL;
-	app_state->window_texture = NULL;
-	app_state->w_pixels = WINDOW_WIDTH *
-		SDL_GetWindowPixelDensity(app_state->window);
-	app_state->h_pixels = WINDOW_HEIGHT * 
-		SDL_GetWindowPixelDensity(app_state->window);
-
-
   if (!SDL_CreateWindowAndRenderer("examples/renderer/streaming-textures",
 				WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_HIGH_PIXEL_DENSITY |
 				SDL_WINDOW_MOUSE_CAPTURE, &app_state->window, &app_state->renderer)) {
     SDL_Log("Couldn't create window/renderer: %s", SDL_GetError());
     return SDL_APP_FAILURE;
   }
+	app_state->w_pixels = WINDOW_WIDTH * SDL_GetWindowPixelDensity(app_state->window);
+	app_state->h_pixels = WINDOW_HEIGHT * SDL_GetWindowPixelDensity(app_state->window);
 
 	// texture create with pixels and not window size -> retina display scaling
-  if (!(app_state->window_texture = SDL_CreateTexture(
-			app_state->renderer, SDL_PIXELFORMAT_RGBA8888,
+  app_state->window_texture = SDL_CreateTexture(
+			app_state->renderer, SDL_PIXELFORMAT_XRGB8888,
 			SDL_TEXTUREACCESS_STREAMING, 
-			app_state->w_pixels, app_state->h_pixels))) {
+			app_state->w_pixels, app_state->h_pixels);
+
+	if (!app_state->window_texture) {
     SDL_Log("Couldn't create streaming texture: %s", SDL_GetError());
     return SDL_APP_FAILURE;
 	}
@@ -223,6 +224,11 @@ void process_event(AppState *app_state, Objects *objects) {
             app_state->mode = NORMAL;
           }
           break;
+				case SDLK_C:
+          if (!event.key.repeat) {
+            app_state->mode = CIRCLE;
+          }
+					break;
         case SDLK_P:
           if (!event.key.repeat) {
             app_state->mode = POINT;
@@ -301,38 +307,73 @@ void process_event(AppState *app_state, Objects *objects) {
 int objects_create(AppState *app_state, Objects *objects) {
   switch (app_state->mode) {
   case NORMAL:
+		// TODO: clear object vars
     return 1;
     break;
   case POINT:
     if (app_state->mouse_left_down && lock == 0) {
       lock = 1;
 			vector_append(&objects->point_2D_buf);
-			Point2D *p = NULL;
-			p = (Point2D *)&objects->point_2D_buf.data[objects->point_2D_buf.length];
-			p->x = app_state->mouse_x;
-			p->y = app_state->mouse_y;
+			Point2D *point = ((Point2D *)objects->point_2D_buf.data);
+			uint32_t index = objects->point_2D_buf.length - 1;
+			printf("point %d created\n", index);
+			point[index].x = app_state->mouse_x; 
+			point[index].y = app_state->mouse_y; 
     } else if (!app_state->mouse_left_down) {
       lock = 0;
     }
     break;
   case LINE:
-    /* if (app_state->mouse_left_down && !lock) { // make point */
-    /*   if (line_first_point) { */
-    /*     objects->l2d[objects->l2d_index].p1.x = app_state->mouse_x; */
-    /*     objects->l2d[objects->l2d_index].p1.y = app_state->mouse_y; */
-    /*     line_first_point = 0; */
-    /*     lock = 1; */
-    /*   } else { */
-    /*     objects->l2d[objects->l2d_index].p2.x = app_state->mouse_x; */
-    /*     objects->l2d[objects->l2d_index].p2.y = app_state->mouse_y; */
-    /*     line_first_point = 1; */
-    /*     lock = 1; */
-    /*     objects->l2d_index++; */
-    /*   } */
-    /* } else if (!app_state->mouse_left_down && lock) { */
-    /*   lock = 0; */
-    /* } */
+    if (app_state->mouse_left_down && !lock) { // make point
+      if (line_first_point) {
+				vector_append(&objects->line_2D_buf);
+				Line2D *l = ((Line2D *)objects->line_2D_buf.data);
+				int index = objects->line_2D_buf.length - 1;
+				l[index].p0.x = app_state->mouse_x; 
+				l[index].p0.y = app_state->mouse_y; 
+        line_first_point = 0;
+        lock = 1;
+      } else {
+				Line2D *l = ((Line2D *)objects->line_2D_buf.data);
+				uint32_t index = objects->line_2D_buf.length - 1;
+				printf("index: %d color: %d\n", index, l[index].color);
+				l[index].p1.x = app_state->mouse_x; 
+				l[index].p1.y = app_state->mouse_y; 
+        line_first_point = 1;
+        lock = 1;
+				printf("line %d created\n", index);
+				printf("%f,%f,%f,%f\n", l[index].p0.x, l[index].p0.y, l[index].p1.x, l[index].p1.y);
+      }
+    } else if (!app_state->mouse_left_down && lock) {
+      lock = 0;
+    }
     break;
+	case CIRCLE:
+    if (app_state->mouse_left_down && !lock) { // make point
+      if (line_first_point) {
+				vector_append(&objects->circle_2D_buf);
+				Circle2D *c = ((Circle2D *)objects->circle_2D_buf.data);
+				int index = objects->circle_2D_buf.length - 1;
+				c[index].center.x = app_state->mouse_x; 
+				c[index].center.y = app_state->mouse_y; 
+        line_first_point = 0;
+        lock = 1;
+      } else {
+				Circle2D *c = ((Circle2D *)objects->circle_2D_buf.data);
+				uint32_t index = objects->circle_2D_buf.length - 1;
+				int x = app_state->mouse_x;
+				int y = app_state->mouse_y;
+				c[index].radius = SDL_sqrt(SDL_pow((c[index].center.x - x), 2.0) + 
+						SDL_pow((c[index].center.y - y), 2.0)); 
+        line_first_point = 1;
+        lock = 1;
+				printf("circle %d created\n", index);
+				printf("%f,%f,%f\n", c[index].center.x, c[index].center.y, c[index].radius );
+      }
+    } else if (!app_state->mouse_left_down && lock) {
+      lock = 0;
+    }
+		break;
   }
   return 1;
 }
@@ -351,50 +392,76 @@ void draw(AppState *app_state, Objects *objects) {
 
   void *pixels;
   int pitch;
-
-
-	SDL_SetTextureBlendMode(app_state->window_texture, SDL_BLENDMODE_BLEND);
-	/* SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255); */
-  SDL_RenderClear(app_state->renderer); /* start with a blank canvas. */
+	/* SDL_SetTextureScaleMode(app_state->window_texture, SDL_SCALEMODE_NEAREST); */
+	/* SDL_SetRenderLogicalPresentation(app_state->renderer, app_state->w_pixels, */
+	/* 		app_state->h_pixels, SDL_LOGICAL_PRESENTATION_DISABLED); */
+	/* SDL_SetTextureBlendMode(app_state->window_texture, SDL_BLENDMODE_NONE); */
+	/* SDL_SetRenderDrawColor(app_state->renderer, 255, 255, 255, 255); */
+  /* SDL_RenderClear(app_state->renderer); */
   if (SDL_LockTexture(app_state->window_texture, NULL, &pixels, &pitch)) {
 		/* printf("pitch: %d\n", pitch); */
     uint32_t *pixs = pixels;
 		for (int i = 0; i < app_state->w_pixels*app_state->h_pixels; i++) {
-			pixs[i] = 0xFF0000FF;
+			pixs[i] = 0xFFFFFFFF;
 		}
 
-		// simple, unperformant
-    for (int p2d_cnt = 0; p2d_cnt < objects->line_2D_buf.length; p2d_cnt++) {
+    for (int p2d_cnt = 0; p2d_cnt < objects->point_2D_buf.length; p2d_cnt++) {
 			int x = SDL_lround(((Point2D *)objects->point_2D_buf.data)[p2d_cnt].x);
 			int y = SDL_lround(((Point2D *)objects->point_2D_buf.data)[p2d_cnt].y);
-			pixs[x + y * app_state->w_pixels] = 0xFFFF00FF;
-			if (x>0 && y>0) {
-				printf("x,y: %d,%d\n", x, y);
+			pixs[x + y * app_state->w_pixels] = 0x00000000;
+		}
+
+		Line2D *l = (Line2D *)objects->line_2D_buf.data;
+		for (int l2d_cnt = 0; l2d_cnt < objects->line_2D_buf.length; l2d_cnt++) {
+			int x0 = SDL_lround(l[l2d_cnt].p0.x);
+			int y0 = SDL_lround(l[l2d_cnt].p0.y);
+			int x1 = SDL_lround(l[l2d_cnt].p1.x);
+			int y1 = SDL_lround(l[l2d_cnt].p1.y);
+			double dx = x1 - x0;
+			double dy = y1 - y0;
+			double y;
+			int x;
+			double m = dy/dx;
+			for (x = x0; x < x1; x++) {
+				y = m * (double)(x - x0) + (double)y0;
+				if (x < app_state->w_pixels-1 && y < app_state->h_pixels-1) {
+					pixs[x + SDL_lround(y) * app_state->w_pixels] = 0x00000000;
+				}
+			}
+		}
+		Circle2D *c = (Circle2D *)objects->circle_2D_buf.data;
+		for (int c2d_cnt = 0; c2d_cnt < objects->circle_2D_buf.length; c2d_cnt++) {
+			int cx = SDL_lround(c[c2d_cnt].center.x);
+			int cy = SDL_lround(c[c2d_cnt].center.y);
+			for (int x = SDL_lround(cx - c[c2d_cnt].radius); x < SDL_lround(cx + c[c2d_cnt].radius); x++) {
+				double val = SDL_pow((c[c2d_cnt].radius), 2.0) - SDL_pow((double)(x - cx), 2.0);
+				if (val < 0) {
+					val = 0.0;
+				}
+				/* double y = SDL_sqrt(val); */
+				/* printf("%f\n", y); */
+        double y_offset = SDL_sqrt(val);
+        int y_top = cy - SDL_lround(y_offset);
+        int y_bottom = cy + SDL_lround(y_offset);
+
+				printf("y_top:%d, r:%f, \n", y_top, c[c2d_cnt].radius);
+        // Draw the top and bottom points of the circle's circumference:
+        if (x >= 0 && x < app_state->w_pixels) {
+            if (y_top >= 0 && y_top < app_state->h_pixels)
+                pixs[x + y_top * app_state->w_pixels] = 0x00000000;
+            if (y_bottom >= 0 && y_bottom < app_state->h_pixels)
+                pixs[x + y_bottom * app_state->w_pixels] = 0x00000000;
+        }
+				/* pixs[x + SDL_lround(y_offset) * app_state->w_pixels] = 0x00000000; */
 			}
 		}
 
-		/*   for (int l2d_cnt = 0; l2d_cnt < objects->l2d_index; l2d_cnt++) { */
-		/*     int x0 = SDL_lround(objects->l2d[l2d_cnt].p1.x); */
-		/*     int y0 = SDL_lround(objects->l2d[l2d_cnt].p1.y); */
-		/*     int x1 = SDL_lround(objects->l2d[l2d_cnt].p2.x); */
-		/*     int y1 = SDL_lround(objects->l2d[l2d_cnt].p2.y); */
-		/*     double dx = x1 - x0; */
-		/*     double dy = y1 - y0; */
-		/* 	int x,y; */
-		/* 	double m = dy/dx; */
-		/* 	for (x = x0; x < x1; x++) { */
-		/* 		y = m * (double)x + (double)y0; */
-		/* 		printf("%f,%f,%f\n", m,x,y); */
-		/* 		if (x < WINDOW_WIDTH_PIXELS-1 && y < WINDOW_HEIGHT_PIXELS-1) { */
-		/* 			Uint32 pixel = SDL_MapRGBA(format, 0xFF, 0x00, 0x00, 0xFF); // Correct RGBA8888 value */
-		/* 			pixs[x + SDL_lround(y) * WINDOW_WIDTH_PIXELS] = 0x00FF00FF; */
-		/* 		} */
-		/* 	} */
-		/* } */
-		/**/
     SDL_UnlockTexture(app_state->window_texture);
   }
-  SDL_RenderTexture(app_state->renderer, app_state->window_texture, &src_rect, &dst_rect);
+
+	/* SDL_SetRenderDrawColor(app_state->renderer, 255, 0, 0, 255); */
+	/* SDL_RenderLine(app_state->renderer, 10, 10, 400, 400); */
+  SDL_RenderTexture(app_state->renderer, app_state->window_texture, NULL, NULL);
   SDL_RenderPresent(app_state->renderer);
 }
 
@@ -402,7 +469,7 @@ void vector_append(ObjectBuf *buf)
 {
 	if (buf->length >= buf->capacity) {
 		buf->capacity += 32;
-		buf->data = SDL_realloc(buf->data, sizeof(buf->object_size) * buf->capacity);
+		buf->data = SDL_realloc(buf->data, buf->object_size * buf->capacity);
 	}
 	buf->length++;
 }
