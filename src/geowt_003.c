@@ -7,6 +7,9 @@
 #define OBJECTS_MAX 1000
 #define TEXT_BUF_MAX 1024
 
+#define DEFAULT_FG_COLOR 0x00000000
+#define DEFAULT_BG_COLOR 0xFFFFFFFF
+
 /* #define DEBUG */
 
 const bool *g_key_states = NULL;
@@ -100,6 +103,9 @@ void draw(AppState *app_state, Objects *objects);
 int objects_create(AppState *app_state, Objects *objects);
 int graphics(AppState *app_state, Objects *objects);
 
+int create_line( Objects *objects, Point2D *p0, Point2D *p1, uint32_t color);
+int create_circle( Objects *objects, Point2D *center, double radius, uint32_t color);
+
 int main() {
   AppState app_state;
   Objects objects;
@@ -107,13 +113,12 @@ int main() {
   objects_init(&objects);
 
   while (keep_running) {
-
-
-
     g_key_states = SDL_GetKeyboardState(g_num_keys);
     process_event(&app_state, &objects);
     objects_create(&app_state, &objects);
 
+		// probably should lock and unlock the texture in main
+		// to be able to draw from many places
 		graphics(&app_state, &objects);
 #ifndef DEBUG
     draw(&app_state, &objects);
@@ -307,6 +312,64 @@ void process_event(AppState *app_state, Objects *objects) {
   }
 }
 
+int create_line( Objects *objects, Point2D *p0, Point2D *p1, uint32_t color)
+{
+	vector_append(&objects->line_2D_buf);
+	Line2D *line = ((Line2D *)objects->line_2D_buf.data);
+	int index = objects->line_2D_buf.length - 1;
+	if (!p0) {
+		line[index].p0.x = 0.0; 
+		line[index].p0.y = 0.0; 
+	} else {
+		line[index].p0.x = p0->x; 
+		line[index].p0.y = p0->y; 
+	}
+	if (!p1) {
+		line[index].p1.x = 0.0; 
+		line[index].p1.y = 0.0; 
+	} else {
+		line[index].p1.x = p1->x; 
+		line[index].p1.y = p1->y; 
+	}
+	if (!color) {
+		line[index].color = DEFAULT_FG_COLOR;
+	} else {
+		line[index].color = color;
+	}
+	for (int i = 0; i < STATUS_COUNT; i++) {
+		line[index].status_buf[i] = false;
+	}
+	printf("New line %d created!\n", index);
+	return 0;
+}
+
+int create_circle( Objects *objects, Point2D *center, double radius, uint32_t color)
+{
+	// if no radius then 0, if no color then default fg (define it)
+	vector_append(&objects->circle_2D_buf);
+	Circle2D *circle = ((Circle2D *)objects->circle_2D_buf.data);
+	int index = objects->circle_2D_buf.length - 1;
+
+	circle[index].center.x = center->x; 
+	circle[index].center.y = center->y;
+
+	if (!radius) {
+		circle[index].radius = 0.0;
+	} else {
+		circle[index].radius = radius;
+	}
+	if (!color) {
+		circle[index].color = DEFAULT_FG_COLOR;
+	} else {
+		circle[index].color = color;
+	}
+	for (int i = 0; i < STATUS_COUNT; i++) {
+		circle[index].status_buf[i] = false;
+	}
+	printf("New circle %d created!\n", index);
+	return 1;
+}
+
 int objects_create(AppState *app_state, Objects *objects) {
   switch (app_state->mode) {
   case NORMAL:
@@ -405,7 +468,7 @@ int graphics(AppState *app_state, Objects *objects)
 
 		// relative to pixel desnsity
 		double distance = SDL_abs((a.x * mouse.x + a.y * mouse.y + (-a.x * p0.x - a.y * p0.y)) / SDL_sqrt(SDL_pow(a.x, 2.0) + SDL_pow(a.y, 2.0)));
-		printf("%f,%f,%f,%f,%f\n", distance, mouse.x, mouse.y, a.x, a.y);
+		/* printf("%f,%f,%f,%f,%f\n", distance, mouse.x, mouse.y, a.x, a.y); */
 		SDL_assert(distance <= SDL_max(app_state->w_pixels, app_state->h_pixels));
 		if ( distance < 20.0 ) {
 			line[i].color = 0xFFFF0000;
@@ -413,6 +476,48 @@ int graphics(AppState *app_state, Objects *objects)
 		} else {
 			line[i].color = 0x00000000;
 			line[i].status_buf[HIGHLITED] = false;
+		}
+	}
+
+
+	/* Circle2D *circle = (Circle2D *)objects->line_2D_buf.data; */
+	/* for (int i = 0; i < objects->circle_2D_buf.length; i++) { */
+	/* 	Point2D m = { circle[i].center.x, circle[i].center.y }; */
+	/* 	double radius = circle[i].radius; */
+	/* 	Point2D mouse = { app_state->mouse_x, app_state->mouse_y }; */
+	/**/
+	/* 	distance = SDL_abs((m.x - mouse.x) + (m.y - mouse.y)); */
+	/* 	if ( distance < 20.0 ) { */
+	/* 		line[i].color = 0xFFFF0000; */
+	/* 		line[i].status_buf[HIGHLITED] = true; */
+	/* 	} else { */
+	/* 		line[i].color = 0x00000000; */
+	/* 		line[i].status_buf[HIGHLITED] = false; */
+	/* 	} */
+	/* } */
+
+
+	// intersections TODO: not using linear system, refactor later? 
+	for (int i = 0; i < objects->line_2D_buf.length; i++) {
+		// if this line[i] intersects with any other afterwards, gen circle around
+		Point2D p0 = { line[i].p0.x, line[i].p0.y };
+		Point2D p1 = { line[i].p1.x, line[i].p1.y };
+		Vector2D a = { -(p1.y - p0.y), (p1.x - p0.x) }; // senkrecht zu (p1 - p0)
+		if (i < objects->line_2D_buf.length) {
+			Point2D p2 = { line[i+1].p0.x, line[i+1].p0.y };
+			Point2D p3 = { line[i+1].p1.x, line[i+1].p1.y };
+			Vector2D v = { (p3.x - p2.x), (p3.y - p2.y)};
+			double t = 0.0;
+			Point2D i = { 0.0, 0.0 };
+			/* a.x * (p2.x + t * v.x) + a.y * (p2.y + t * v.y) + (-a.x * p0.x - a.y * p0.y): */
+			// check denominator for 0 first
+			t = (-(-a.x * p0.x - a.y * p0.y) - a.x * p2.x - a.y * p2.y) 
+				/ ( a.x * v.x + a.y * v.y);
+			i.x = p2.x + t * v.x;
+			i.y = p2.y + t * v.y;
+			printf("intersection: %f, %f, %f\n", t, i.x, i.y);
+			//fill intersection buffer, create circle when new element in buffer
+			create_circle(objects, &i, 20.0, 0);
 		}
 	}
 	return 0;
