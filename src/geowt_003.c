@@ -27,7 +27,8 @@ typedef enum {
 
 typedef enum {
 	SELECTED,
-	NOT_SELECTED,
+	HIGHLITED,
+	STATUS_COUNT,
 } ObjectStatus;
 
 typedef struct {
@@ -52,22 +53,25 @@ typedef struct {
 typedef struct {
   double x;
   double y;
-  uint32_t color;
-	ObjectStatus status;
 } Point2D;
+
+typedef struct {
+	double x;
+	double y;
+} Vector2D;
 
 typedef struct {
   Point2D p0;
   Point2D p1;
   uint32_t color;
-	ObjectStatus status;
+	ObjectStatus status_buf[STATUS_COUNT];
 } Line2D;
 
 typedef struct {
 	Point2D center;
 	double radius;
   uint32_t color;
-	ObjectStatus status;
+	ObjectStatus status_buf[STATUS_COUNT];
 } Circle2D;
 
 typedef struct {
@@ -94,6 +98,7 @@ int objects_init(Objects *objects);
 void process_event(AppState *app_state, Objects *objects);
 void draw(AppState *app_state, Objects *objects);
 int objects_create(AppState *app_state, Objects *objects);
+int graphics(AppState *app_state, Objects *objects);
 
 int main() {
   AppState app_state;
@@ -108,6 +113,8 @@ int main() {
     g_key_states = SDL_GetKeyboardState(g_num_keys);
     process_event(&app_state, &objects);
     objects_create(&app_state, &objects);
+
+		graphics(&app_state, &objects);
 #ifndef DEBUG
     draw(&app_state, &objects);
 		/* float x,y; */
@@ -300,10 +307,6 @@ void process_event(AppState *app_state, Objects *objects) {
   }
 }
 
-
-
-
-
 int objects_create(AppState *app_state, Objects *objects) {
   switch (app_state->mode) {
   case NORMAL:
@@ -331,6 +334,10 @@ int objects_create(AppState *app_state, Objects *objects) {
 				int index = objects->line_2D_buf.length - 1;
 				l[index].p0.x = app_state->mouse_x; 
 				l[index].p0.y = app_state->mouse_y; 
+				l[index].color = 0x00000000;
+				for (int i = 0; i < STATUS_COUNT; i++) {
+					l[index].status_buf[i] = false;
+				}
         line_first_point = 0;
         lock = 1;
       } else {
@@ -356,6 +363,10 @@ int objects_create(AppState *app_state, Objects *objects) {
 				int index = objects->circle_2D_buf.length - 1;
 				c[index].center.x = app_state->mouse_x; 
 				c[index].center.y = app_state->mouse_y; 
+				c[index].color = 0x00000000;
+				for (int i = 0; i < STATUS_COUNT; i++) {
+					c[index].status_buf[i] = false;
+				}
         line_first_point = 0;
         lock = 1;
       } else {
@@ -377,6 +388,36 @@ int objects_create(AppState *app_state, Objects *objects) {
   }
   return 1;
 }
+
+
+
+int graphics(AppState *app_state, Objects *objects)
+{
+	// change object color (highlight) based on mouse distance
+	Line2D *line = (Line2D *)objects->line_2D_buf.data;
+
+	for (int i = 0; i < objects->line_2D_buf.length; i++) {
+		/* int x0, y0, x1, y1, ax, ay; */
+		Point2D p0 = { line[i].p0.x, line[i].p0.y };
+		Point2D p1 = { line[i].p1.x, line[i].p1.y };
+		Vector2D a = { -(p1.y - p0.y), (p1.x - p0.x) }; // senkrecht zu (p1 - p0)
+		Point2D mouse = { app_state->mouse_x, app_state->mouse_y };
+
+		// relative to pixel desnsity
+		double distance = SDL_abs((a.x * mouse.x + a.y * mouse.y + (-a.x * p0.x - a.y * p0.y)) / SDL_sqrt(SDL_pow(a.x, 2.0) + SDL_pow(a.y, 2.0)));
+		printf("%f,%f,%f,%f,%f\n", distance, mouse.x, mouse.y, a.x, a.y);
+		SDL_assert(distance <= SDL_max(app_state->w_pixels, app_state->h_pixels));
+		if ( distance < 20.0 ) {
+			line[i].color = 0xFFFF0000;
+			line[i].status_buf[HIGHLITED] = true;
+		} else {
+			line[i].color = 0x00000000;
+			line[i].status_buf[HIGHLITED] = false;
+		}
+	}
+	return 0;
+}
+
 
 void draw(AppState *app_state, Objects *objects) {
   SDL_FRect dst_rect;
@@ -425,7 +466,7 @@ void draw(AppState *app_state, Objects *objects) {
 			for (x = x0; x < x1; x++) {
 				y = m * (double)(x - x0) + (double)y0;
 				if (x < app_state->w_pixels-1 && y < app_state->h_pixels-1) {
-					pixs[x + SDL_lround(y) * app_state->w_pixels] = 0x00000000;
+					pixs[x + SDL_lround(y) * app_state->w_pixels] = l[l2d_cnt].color;
 				}
 			}
 		}
