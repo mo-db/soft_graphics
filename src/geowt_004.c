@@ -20,8 +20,6 @@ int pix_cnt = 0;
 bool line_first_point = 1;
 bool first_run = 1;
 int scale_var = 3;
-bool OBJ_CREATED = false;
-
 
 typedef enum {
   NORMAL,
@@ -50,7 +48,6 @@ typedef struct {
   double mouse_y;
   bool mouse_left_down;
   bool mouse_right_down;
-	bool mouse_click;
 
   bool text_input;
   char text[TEXT_BUF_MAX];
@@ -91,8 +88,6 @@ typedef struct {
 	ObjectBuf point_2D_buf;
 	ObjectBuf line_2D_buf;
 	ObjectBuf circle_2D_buf;
-
-	ObjectBuf line_2D_seg_buf;
 } Objects;
 
 void vector_append(ObjectBuf *ctx);
@@ -119,7 +114,6 @@ int main() {
 
   while (keep_running) {
     g_key_states = SDL_GetKeyboardState(g_num_keys);
-		app_state.mouse_click = false;
     process_event(&app_state, &objects);
     objects_create(&app_state, &objects);
 
@@ -171,7 +165,6 @@ int app_init(AppState *app_state) {
   app_state->mouse_y = 0;
   app_state->mouse_left_down = 0;
   app_state->mouse_right_down = 0;
-	app_state->mouse_click = false;
   app_state->density = SDL_GetWindowPixelDensity(app_state->window);
   app_state->text_input = false;
   for (int i = 0; i < TEXT_BUF_MAX; i++) {
@@ -185,10 +178,6 @@ int objects_init(Objects *objects) {
 	objects->point_2D_buf = (ObjectBuf){ .object_size = sizeof(Point2D) };
 	objects->line_2D_buf = (ObjectBuf){ .object_size = sizeof(Line2D) };
 	objects->circle_2D_buf = (ObjectBuf){ .object_size = sizeof(Circle2D) };
-
-	objects->line_2D_seg_buf = (ObjectBuf){ .object_size = sizeof(Line2D) };
-	/* objects->intersections_2D = (ObjectBuf){ .object_size = sizeof(Point2D) }; */
-
   return 1;
 }
 
@@ -314,7 +303,6 @@ void process_event(AppState *app_state, Objects *objects) {
       break;
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
       app_state->mouse_left_down = event.button.down;
-			app_state->mouse_click = true;
       break;
     case SDL_EVENT_MOUSE_BUTTON_UP:
       app_state->mouse_left_down = event.button.down;
@@ -329,37 +317,6 @@ int create_line( Objects *objects, Point2D *p0, Point2D *p1, uint32_t color)
 	vector_append(&objects->line_2D_buf);
 	Line2D *line = ((Line2D *)objects->line_2D_buf.data);
 	int index = objects->line_2D_buf.length - 1;
-	if (!p0) {
-		line[index].p0.x = 0.0; 
-		line[index].p0.y = 0.0; 
-	} else {
-		line[index].p0.x = p0->x; 
-		line[index].p0.y = p0->y; 
-	}
-	if (!p1) {
-		line[index].p1.x = 0.0; 
-		line[index].p1.y = 0.0; 
-	} else {
-		line[index].p1.x = p1->x; 
-		line[index].p1.y = p1->y; 
-	}
-	if (!color) {
-		line[index].color = DEFAULT_FG_COLOR;
-	} else {
-		line[index].color = color;
-	}
-	for (int i = 0; i < STATUS_COUNT; i++) {
-		line[index].status_buf[i] = false;
-	}
-	printf("New line %d created!\n", index);
-	return 0;
-}
-
-int create_line_segment( Objects *objects, Point2D *p0, Point2D *p1, uint32_t color)
-{
-	vector_append(&objects->line_2D_seg_buf);
-	Line2D *line = ((Line2D *)objects->line_2D_seg_buf.data);
-	int index = objects->line_2D_seg_buf.length - 1;
 	if (!p0) {
 		line[index].p0.x = 0.0; 
 		line[index].p0.y = 0.0; 
@@ -455,7 +412,6 @@ int objects_create(AppState *app_state, Objects *objects) {
         line_first_point = 1;
         lock = 1;
 				printf("line %d created\n", index);
-				OBJ_CREATED = true;
 				printf("%f,%f,%f,%f\n", l[index].p0.x, l[index].p0.y, l[index].p1.x, l[index].p1.y);
       }
     } else if (!app_state->mouse_left_down && lock) {
@@ -486,7 +442,6 @@ int objects_create(AppState *app_state, Objects *objects) {
         line_first_point = 1;
         lock = 1;
 				printf("circle %d created\n", index);
-				OBJ_CREATED = true;
 				printf("%f,%f,%f\n", c[index].center.x, c[index].center.y, c[index].radius );
       }
     } else if (!app_state->mouse_left_down && lock) {
@@ -497,34 +452,17 @@ int objects_create(AppState *app_state, Objects *objects) {
   return 1;
 }
 
-int compare( const void* a, const void* b)
-{
-    const Point2D *pA = (const Point2D *)a;
-    const Point2D *pB = (const Point2D *)b;
-    if (pA->x < pB->x) return -1;
-    else if (pA->x > pB->x) return 1;
-    else {
-        if (pA->y < pB->y) return -1;
-        else if (pA->y > pB->y) return 1;
-        else return 0;
-    }
-}
-
 
 
 int graphics(AppState *app_state, Objects *objects)
 {
-	// alles nur für segmente erstmal nicht für base objects
 	// change object color (highlight) based on mouse distance
 	Line2D *line = (Line2D *)objects->line_2D_buf.data;
-	Line2D *seg = (Line2D *)objects->line_2D_seg_buf.data;
 
-	// if objects count changed, run once and update objectscount watcher
-
-	for (int i = 0; i < objects->line_2D_seg_buf.length; i++) {
+	for (int i = 0; i < objects->line_2D_buf.length; i++) {
 		/* int x0, y0, x1, y1, ax, ay; */
-		Point2D p0 = { seg[i].p0.x, seg[i].p0.y };
-		Point2D p1 = { seg[i].p1.x, seg[i].p1.y };
+		Point2D p0 = { line[i].p0.x, line[i].p0.y };
+		Point2D p1 = { line[i].p1.x, line[i].p1.y };
 		Vector2D a = { -(p1.y - p0.y), (p1.x - p0.x) }; // senkrecht zu (p1 - p0)
 		Point2D mouse = { app_state->mouse_x, app_state->mouse_y };
 
@@ -532,23 +470,12 @@ int graphics(AppState *app_state, Objects *objects)
 		double distance = SDL_abs((a.x * mouse.x + a.y * mouse.y + (-a.x * p0.x - a.y * p0.y)) / SDL_sqrt(SDL_pow(a.x, 2.0) + SDL_pow(a.y, 2.0)));
 		/* printf("%f,%f,%f,%f,%f\n", distance, mouse.x, mouse.y, a.x, a.y); */
 		SDL_assert(distance <= SDL_max(app_state->w_pixels, app_state->h_pixels));
-		if (distance < 20.0 && mouse.x >= p0.x && mouse.x <= p1.x) {
-			seg[i].status_buf[HIGHLITED] = true;
+		if ( distance < 20.0 ) {
+			line[i].color = 0xFFFF0000;
+			line[i].status_buf[HIGHLITED] = true;
 		} else {
-			seg[i].status_buf[HIGHLITED] = false;
-		}
-		if (seg[i].status_buf[HIGHLITED] && app_state->mouse_click) {
-			if (seg[i].status_buf[SELECTED]) {
-				seg[i].status_buf[SELECTED] = false;
-			}
-			seg[i].status_buf[SELECTED] = true;
-		}
-		if (seg[i].status_buf[SELECTED]) {
-			seg[i].color = 0xFF00FF00;
-		} else if (seg[i].status_buf[HIGHLITED]) {
-			seg[i].color = 0xFFFF0000;
-		} else {
-			seg[i].color = DEFAULT_FG_COLOR;
+			line[i].color = 0x00000000;
+			line[i].status_buf[HIGHLITED] = false;
 		}
 	}
 
@@ -570,71 +497,28 @@ int graphics(AppState *app_state, Objects *objects)
 	/* } */
 
 
-	// intersections TODO: not using linear system, refactor later?
-	if (OBJ_CREATED == true) {
-		objects->line_2D_seg_buf.length = 0;
-		OBJ_CREATED = false; // this should be somwhere global
-
-		Point2D end_points[1000];
-		int end_point_counter;
-
-		// for each line, compare with all others for intersection points
-		for (int i = 0; i < objects->line_2D_buf.length; i++) {
-			end_point_counter = 0;
-			// if this line[i] intersects with any other afterwards, gen circle around
-			// end_points first two are p0, p1
-			Point2D p0 = { line[i].p0.x, line[i].p0.y };
-			Point2D p1 = { line[i].p1.x, line[i].p1.y };
-			Vector2D a = { -(p1.y - p0.y), (p1.x - p0.x) }; // senkrecht zu (p1 - p0)
-
-			// get outer endpoints
-			end_points[end_point_counter++] = p0;
-			end_points[end_point_counter++] = p1;
-			for ( int j = 0 ; j < objects->line_2D_buf.length; j++) {
-				if (j == i) { continue; }
-				Point2D p2 = { line[j].p0.x, line[j].p0.y };
-				Point2D p3 = { line[j].p1.x, line[j].p1.y };
-				Vector2D v = { (p3.x - p2.x), (p3.y - p2.y)};
-				double t = 0.0;
-				Point2D is_point = { 0.0, 0.0 };
-				// check denominator first to not divide trough 0
-				t = (-(-a.x * p0.x - a.y * p0.y) - a.x * p2.x - a.y * p2.y) 
-					/ ( a.x * v.x + a.y * v.y);
-				is_point.x = p2.x + t * v.x;
-				is_point.y = p2.y + t * v.y;
-				// test if inside the line endpoints
-				if (is_point.x >= p2.x && is_point.x <= p3.x
-						&& is_point.x >= p0.x && is_point.x <= p1.x) {
-					// test for duplicate intersections
-					bool duplicate = false;
-					// need epsilon here
-					for (int k = 0; k < end_point_counter; k++) {
-						if (end_points[k].x == is_point.x && end_points[k].y == is_point.y) {
-							duplicate = true;
-						}
-					}
-					if (!duplicate) {
-						end_points[end_point_counter++] = is_point;
-						/* printf("is_point: %f, %f, %f\n", t, is_point.x, is_point.y); */
-						/* create_circle(objects, &is_point, 20.0, 0); */
-					}
-				}
-				for (int k = 0; k < end_point_counter; k++) {
-						printf("%f,%f\n", end_points[k].x, end_points[k].y);
-				}
-				printf("---now sort!\n");
-				SDL_qsort(&end_points, end_point_counter, sizeof(Point2D), compare );
-				for (int k = 0; k < end_point_counter; k++) {
-						printf("%f,%f\n", end_points[k].x, end_points[k].y);
-				}
-				for (int k = 0; k < end_point_counter-1; k++) {
-						create_line_segment(objects, &end_points[k], &end_points[k+1], 0);
-				}
-				for (int k = 0; k < end_point_counter; k++) {
-						create_circle(objects, &end_points[k], 20.0, 0);
-				}
-			}
-		} 
+	// intersections TODO: not using linear system, refactor later? 
+	for (int i = 0; i < objects->line_2D_buf.length; i++) {
+		// if this line[i] intersects with any other afterwards, gen circle around
+		Point2D p0 = { line[i].p0.x, line[i].p0.y };
+		Point2D p1 = { line[i].p1.x, line[i].p1.y };
+		Vector2D a = { -(p1.y - p0.y), (p1.x - p0.x) }; // senkrecht zu (p1 - p0)
+		if (i < objects->line_2D_buf.length) {
+			Point2D p2 = { line[i+1].p0.x, line[i+1].p0.y };
+			Point2D p3 = { line[i+1].p1.x, line[i+1].p1.y };
+			Vector2D v = { (p3.x - p2.x), (p3.y - p2.y)};
+			double t = 0.0;
+			Point2D i = { 0.0, 0.0 };
+			/* a.x * (p2.x + t * v.x) + a.y * (p2.y + t * v.y) + (-a.x * p0.x - a.y * p0.y): */
+			// check denominator for 0 first
+			t = (-(-a.x * p0.x - a.y * p0.y) - a.x * p2.x - a.y * p2.y) 
+				/ ( a.x * v.x + a.y * v.y);
+			i.x = p2.x + t * v.x;
+			i.y = p2.y + t * v.y;
+			printf("intersection: %f, %f, %f\n", t, i.x, i.y);
+			//fill intersection buffer, create circle when new element in buffer
+			create_circle(objects, &i, 20.0, 0);
+		}
 	}
 	return 0;
 }
@@ -673,13 +557,12 @@ void draw(AppState *app_state, Objects *objects) {
 			pixs[x + y * app_state->w_pixels] = 0x00000000;
 		}
 
-		// draw all segments
-		Line2D *l_seg = (Line2D *)objects->line_2D_seg_buf.data;
-		for (int l2d_cnt = 0; l2d_cnt < objects->line_2D_seg_buf.length; l2d_cnt++) {
-			int x0 = SDL_lround(l_seg[l2d_cnt].p0.x);
-			int y0 = SDL_lround(l_seg[l2d_cnt].p0.y);
-			int x1 = SDL_lround(l_seg[l2d_cnt].p1.x);
-			int y1 = SDL_lround(l_seg[l2d_cnt].p1.y);
+		Line2D *l = (Line2D *)objects->line_2D_buf.data;
+		for (int l2d_cnt = 0; l2d_cnt < objects->line_2D_buf.length; l2d_cnt++) {
+			int x0 = SDL_lround(l[l2d_cnt].p0.x);
+			int y0 = SDL_lround(l[l2d_cnt].p0.y);
+			int x1 = SDL_lround(l[l2d_cnt].p1.x);
+			int y1 = SDL_lround(l[l2d_cnt].p1.y);
 			double dx = x1 - x0;
 			double dy = y1 - y0;
 			double y;
@@ -688,34 +571,10 @@ void draw(AppState *app_state, Objects *objects) {
 			for (x = x0; x < x1; x++) {
 				y = m * (double)(x - x0) + (double)y0;
 				if (x < app_state->w_pixels-1 && y < app_state->h_pixels-1) {
-
-					pixs[x + SDL_lround(y) * app_state->w_pixels] = l_seg[l2d_cnt].color;
+					pixs[x + SDL_lround(y) * app_state->w_pixels] = l[l2d_cnt].color;
 				}
 			}
 		}
-
-		// draw all primitive lines
-		Line2D *l = (Line2D *)objects->line_2D_buf.data;
-		// not draw atm
-		/* for (int l2d_cnt = 0; l2d_cnt < objects->line_2D_buf.length; l2d_cnt++) { */
-		/* 	int x0 = SDL_lround(l[l2d_cnt].p0.x); */
-		/* 	int y0 = SDL_lround(l[l2d_cnt].p0.y); */
-		/* 	int x1 = SDL_lround(l[l2d_cnt].p1.x); */
-		/* 	int y1 = SDL_lround(l[l2d_cnt].p1.y); */
-		/* 	double dx = x1 - x0; */
-		/* 	double dy = y1 - y0; */
-		/* 	double y; */
-		/* 	int x; */
-		/* 	double m = dy/dx; */
-		/* 	for (x = x0; x < x1; x++) { */
-		/* 		y = m * (double)(x - x0) + (double)y0; */
-		/* 		if (x < app_state->w_pixels-1 && y < app_state->h_pixels-1) { */
-		/* 			pixs[x + SDL_lround(y) * app_state->w_pixels] = l[l2d_cnt].color; */
-		/* 		} */
-		/* 	} */
-		/* } */
-
-
 		Circle2D *c = (Circle2D *)objects->circle_2D_buf.data;
 		for (int c2d_cnt = 0; c2d_cnt < objects->circle_2D_buf.length; c2d_cnt++) {
 			int cx = SDL_lround(c[c2d_cnt].center.x);
@@ -731,7 +590,7 @@ void draw(AppState *app_state, Objects *objects) {
         int y_top = cy - SDL_lround(y_offset);
         int y_bottom = cy + SDL_lround(y_offset);
 
-				/* printf("y_top:%d, r:%f, \n", y_top, c[c2d_cnt].radius); */
+				printf("y_top:%d, r:%f, \n", y_top, c[c2d_cnt].radius);
         // Draw the top and bottom points of the circle's circumference:
         if (x >= 0 && x < app_state->w_pixels) {
             if (y_top >= 0 && y_top < app_state->h_pixels)
@@ -759,9 +618,4 @@ void vector_append(ObjectBuf *buf)
 		buf->data = SDL_realloc(buf->data, buf->object_size * buf->capacity);
 	}
 	buf->length++;
-}
-
-void vector_destroy(ObjectBuf *buf)
-{
-	SDL_free(buf);
 }
