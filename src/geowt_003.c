@@ -57,6 +57,13 @@ typedef struct {
 } AppState;
 
 typedef struct {
+	void *data;
+	uint32_t length;
+	uint32_t capacity;
+	size_t object_size;
+} ObjectBuf;
+
+typedef struct {
   double x;
   double y;
 } Point2D;
@@ -77,20 +84,15 @@ typedef struct {
 	Point2D center;
 	double radius;
   uint32_t color;
+	ObjectBuf is_point_buf;
 	ObjectStatus status_buf[STATUS_COUNT];
 } Circle2D;
-
-typedef struct {
-	void *data;
-	uint32_t length;
-	uint32_t capacity;
-	size_t object_size;
-} ObjectBuf;
 
 typedef struct {
 	ObjectBuf point_2D_buf;
 	ObjectBuf line_2D_buf;
 	ObjectBuf circle_2D_buf;
+	ObjectBuf is_circle_buf;
 
 	ObjectBuf line_2D_seg_buf;
 } Objects;
@@ -185,6 +187,8 @@ int objects_init(Objects *objects) {
 	objects->point_2D_buf = (ObjectBuf){ .object_size = sizeof(Point2D) };
 	objects->line_2D_buf = (ObjectBuf){ .object_size = sizeof(Line2D) };
 	objects->circle_2D_buf = (ObjectBuf){ .object_size = sizeof(Circle2D) };
+
+	objects->is_circle_buf = (ObjectBuf){ .object_size = sizeof(Circle2D) };
 
 	objects->line_2D_seg_buf = (ObjectBuf){ .object_size = sizeof(Line2D) };
 	/* objects->intersections_2D = (ObjectBuf){ .object_size = sizeof(Point2D) }; */
@@ -409,9 +413,38 @@ int create_circle( Objects *objects, Point2D *center, double radius, uint32_t co
 	for (int i = 0; i < STATUS_COUNT; i++) {
 		circle[index].status_buf[i] = false;
 	}
+	circle[index].is_point_buf = (ObjectBuf){ .object_size = sizeof(Point2D) };
 	printf("New circle %d created!\n", index);
 	return 1;
 }
+
+int create_is_circle( Objects *objects, Point2D *center, double radius, uint32_t color)
+{
+	// if no radius then 0, if no color then default fg (define it)
+	vector_append(&objects->is_circle_buf);
+	Circle2D *circle = ((Circle2D *)objects->is_circle_buf.data);
+	int index = objects->is_circle_buf.length - 1;
+
+	circle[index].center.x = center->x; 
+	circle[index].center.y = center->y;
+
+	if (!radius) {
+		circle[index].radius = 0.0;
+	} else {
+		circle[index].radius = radius;
+	}
+	if (!color) {
+		circle[index].color = DEFAULT_FG_COLOR;
+	} else {
+		circle[index].color = color;
+	}
+	for (int i = 0; i < STATUS_COUNT; i++) {
+		circle[index].status_buf[i] = false;
+	}
+	circle[index].is_point_buf = (ObjectBuf){ .object_size = sizeof(Point2D) };
+	return 1;
+}
+
 
 int objects_create(AppState *app_state, Objects *objects) {
   switch (app_state->mode) {
@@ -465,15 +498,8 @@ int objects_create(AppState *app_state, Objects *objects) {
 	case CIRCLE:
     if (app_state->mouse_left_down && !lock) { // make point
       if (line_first_point) {
-				vector_append(&objects->circle_2D_buf);
-				Circle2D *c = ((Circle2D *)objects->circle_2D_buf.data);
-				int index = objects->circle_2D_buf.length - 1;
-				c[index].center.x = app_state->mouse_x; 
-				c[index].center.y = app_state->mouse_y; 
-				c[index].color = 0x00000000;
-				for (int i = 0; i < STATUS_COUNT; i++) {
-					c[index].status_buf[i] = false;
-				}
+				Point2D mouse = {app_state->mouse_x, app_state->mouse_y};
+				create_circle(objects, &mouse, 0.0, 0);
         line_first_point = 0;
         lock = 1;
       } else {
@@ -573,7 +599,6 @@ int graphics(AppState *app_state, Objects *objects)
 	// intersections TODO: not using linear system, refactor later?
 	if (OBJ_CREATED == true) {
 		objects->line_2D_seg_buf.length = 0;
-		OBJ_CREATED = false; // this should be somwhere global
 
 		Point2D end_points[1000];
 		int end_point_counter;
@@ -631,11 +656,126 @@ int graphics(AppState *app_state, Objects *objects)
 						create_line_segment(objects, &end_points[k], &end_points[k+1], 0);
 				}
 				for (int k = 0; k < end_point_counter; k++) {
-						create_circle(objects, &end_points[k], 20.0, 0);
+						create_is_circle(objects, &end_points[k], 20.0, 0);
 				}
 			}
 		} 
 	}
+
+
+	// circle intersections over all lines
+	Circle2D *circle = (Circle2D *)objects->circle_2D_buf.data;
+	if (OBJ_CREATED == true) {
+
+		for (int i = 0; i < objects->circle_2D_buf.length; i++) {
+			Point2D m = { circle[i].center.x, circle[i].center.y };
+			double radius = circle[i].radius;
+			Point2D *is_point_buf = (Point2D *)circle[i].is_point_buf.data;
+			// reset intersections for each circle to 0
+			circle[i].is_point_buf.length = 0;
+
+			//draw
+
+
+			// test every line and save intersections if not duplicate
+			for (int j = 0; j < objects->line_2D_buf.length; j++) {
+				Point2D p0 = { line[j].p0.x, line[j].p0.y };
+				Point2D p1 = { line[j].p1.x, line[j].p1.y };
+
+				Point2D v = {p1.x - p0.x, p1.y - p0.y };
+
+				double a = SDL_pow(v.x, 2.0) + SDL_pow(v.y, 2.0);
+				double b = 2.0 * v.x * (p0.x - m.x) + 2 * v.y * (p0.y - m.y);
+				double c = SDL_pow(p0.x - m.x, 2.0) + SDL_pow(p0.y - m.y, 2.0) - SDL_pow(radius, 2.0);
+
+				double det = SDL_pow(b, 2.0) - 4 * a * c;
+				double t0 = 0.0;
+				double t1 = 0.0;
+
+				printf("det: %f\n", det);
+				
+
+				// check if 0 and 1 are the same with epsilon
+				Point2D is_point_0 = { 0.0, 0.0 };
+				Point2D is_point_1= { 0.0, 0.0 };
+				bool duplicate = false;
+				bool has_is = false;
+				bool double_is = false;
+
+
+				if (det > 0.0) {
+					t0 = (-b +	SDL_sqrt(det)) / (2 * a);
+					t1 = (-b -	SDL_sqrt(det)) / (2 * a);
+					is_point_0.x = p0.x + t0 * v.x;
+					is_point_0.y = p0.y + t0 * v.y;
+
+					is_point_1.x = p0.x + t1 * v.x;
+					is_point_1.y = p0.y + t1 * v.y;
+
+					double_is = true;
+					has_is = true;
+				} else if (det == 0.0) { // need epsilon
+					t0 = -b / (2 * a);
+
+					is_point_0.x = p0.x + t0 * v.x;
+					is_point_0.y = p0.y + t0 * v.y;
+
+					double_is = false;
+					has_is = true;
+				} else {
+					has_is = false;
+				}
+
+				printf("is_0: %f,%f is_1: %f,%f\n", is_point_0.x, is_point_0.y, is_point_1.x, is_point_1.y);
+
+				// check duplicate intersection need epsilon here
+				if (has_is) {
+					/* if (double_is) { */
+					/* 	for (int k = 0; k < circle[i].is_point_buf.length; k++) { */
+					/* 		if (is_point_buf[k].x == is_point_0.x && is_point_buf[k].y == is_point_0.y) { */
+					/* 			duplicate = true; */
+					/* 		} */
+					/* 		if (is_point_buf[k].x == is_point_1.x && is_point_buf[k].y == is_point_1.y) { */
+					/* 			duplicate = true; */
+					/* 		} */
+					/* 	} */
+					/* } else { */
+					/* 	for (int k = 0; k < circle[i].is_point_buf.length; k++) { */
+					/* 		if (is_point_buf[k].x == is_point_0.x && is_point_buf[k].y == is_point_0.y) { */
+					/* 			duplicate = true; */
+					/* 		} */
+					/* 	} */
+					/* } */
+					if (!duplicate) {
+						if (double_is) {
+							vector_append(&circle[i].is_point_buf);
+							is_point_buf = (Point2D *)circle[i].is_point_buf.data; // because of REALOC!!!!
+							is_point_buf[circle[i].is_point_buf.length-1].x = is_point_0.x;
+							is_point_buf[circle[i].is_point_buf.length-1].y = is_point_0.y;
+							vector_append(&circle[i].is_point_buf);
+							is_point_buf = (Point2D *)circle[i].is_point_buf.data; 
+							is_point_buf[circle[i].is_point_buf.length-1].x = is_point_1.x;
+							is_point_buf[circle[i].is_point_buf.length-1].y = is_point_1.y;
+						} else {
+							vector_append(&circle[i].is_point_buf);
+							is_point_buf = (Point2D *)circle[i].is_point_buf.data; 
+							is_point_buf[circle[i].is_point_buf.length-1].x = is_point_0.x;
+							is_point_buf[circle[i].is_point_buf.length-1].y = is_point_0.y;
+						}
+					}
+				} else {
+					continue;
+				}
+			}
+			for (int k = 0; k < circle[i].is_point_buf.length; k++) {
+					is_point_buf = (Point2D *)circle[i].is_point_buf.data; 
+					printf("is_point: %f,%f\n", is_point_buf[k].x, is_point_buf[k].y);
+					create_is_circle(objects, &is_point_buf[k], 20.0, 0);
+			}
+		}
+	}
+
+	OBJ_CREATED = false; // this should be somwhere global
 	return 0;
 }
 
@@ -722,6 +862,35 @@ void draw(AppState *app_state, Objects *objects) {
 			int cy = SDL_lround(c[c2d_cnt].center.y);
 			for (int x = SDL_lround(cx - c[c2d_cnt].radius); x < SDL_lround(cx + c[c2d_cnt].radius); x++) {
 				double val = SDL_pow((c[c2d_cnt].radius), 2.0) - SDL_pow((double)(x - cx), 2.0);
+				if (val < 0) {
+					val = 0.0;
+				}
+				/* double y = SDL_sqrt(val); */
+				/* printf("%f\n", y); */
+        double y_offset = SDL_sqrt(val);
+        int y_top = cy - SDL_lround(y_offset);
+        int y_bottom = cy + SDL_lround(y_offset);
+
+				/* printf("y_top:%d, r:%f, \n", y_top, c[c2d_cnt].radius); */
+        // Draw the top and bottom points of the circle's circumference:
+        if (x >= 0 && x < app_state->w_pixels) {
+            if (y_top >= 0 && y_top < app_state->h_pixels)
+                pixs[x + y_top * app_state->w_pixels] = 0x00000000;
+            if (y_bottom >= 0 && y_bottom < app_state->h_pixels)
+                pixs[x + y_bottom * app_state->w_pixels] = 0x00000000;
+        }
+				/* pixs[x + SDL_lround(y_offset) * app_state->w_pixels] = 0x00000000; */
+			}
+		}
+
+
+		// is_circles
+		Circle2D *is_c = (Circle2D *)objects->is_circle_buf.data;
+		for (int c2d_cnt = 0; c2d_cnt < objects->is_circle_buf.length; c2d_cnt++) {
+			int cx = SDL_lround(is_c[c2d_cnt].center.x);
+			int cy = SDL_lround(is_c[c2d_cnt].center.y);
+			for (int x = SDL_lround(cx - is_c[c2d_cnt].radius); x < SDL_lround(cx + is_c[c2d_cnt].radius); x++) {
+				double val = SDL_pow((is_c[c2d_cnt].radius), 2.0) - SDL_pow((double)(x - cx), 2.0);
 				if (val < 0) {
 					val = 0.0;
 				}
