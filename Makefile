@@ -1,12 +1,13 @@
 ## Blueprint Makefile
-SRC_FILES := geowt_003
+SRC_FILES := templates
 SRC_DIR := src
 OBJ_DIR := obj
 BIN_DIR := bin
 
 ## create vars for target, src and object files
 EXE := $(BIN_DIR)/a.out
-SRC := $(wildcard $(SRC_DIR)/*.c)
+# SRC := $(wildcard $(SRC_DIR)/*.c)
+SRC := $(wildcard $(SRC_DIR)/*.cpp)
 OBJ := $(addprefix $(OBJ_DIR)/, $(addsuffix .o, $(SRC_FILES)))
 
 # config for libraries, dont forget to edit upclangd target
@@ -25,13 +26,12 @@ SDL3_LDFLAGS := -L$(SDL3_PREFIX)/lib -lsdl3
 # FFMPEG_LDFLAGS := -L$(FFMPEG_PREFIX)/lib -lavcodec
 
 FLAGS := -fsanitize=address -fsanitize=undefined
-CFLAGS := $(FLAGS) -Wall -Wextra -g -MMD -MP $(SDL3_CFLAGS) $(FFMPEG_CFLAGS)
-LDFLAGS := $(FLAGS) $(SDL3_LDFLAGS) $(FFMPEG_LDFLAGS)
+CFLAGS := $(FLAGS) -Wall -Wextra -g -MMD -MP $(SDL3_CFLAGS)
+LDFLAGS := $(FLAGS) $(SDL3_LDFLAGS)
 
 ## select compiler
-# CC := gcc-14
-CC := clang
-
+# CXX := clang
+CXX := clang++
 
 ## Targets
 # Phony targets aren't treated as files
@@ -46,12 +46,13 @@ run: $(EXE)
 
 # Link all the objectfiles into an exe
 $(EXE): $(OBJ) | $(BIN_DIR) # 
-	$(CC) $(LDFLAGS) $^ -o $@
+	$(CXX) $(LDFLAGS) $^ -o $@
 	dsymutil $@
 
 # Only source files that have been changed get rebuilt
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+# $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp | $(OBJ_DIR)
+	$(CXX) $(CFLAGS) -c $< -o $@
 
 # Clean for rebuilt - Using implicit variable RM (rm -f)
 clean:
