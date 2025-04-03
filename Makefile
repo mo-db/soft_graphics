@@ -13,7 +13,7 @@ OBJ := $(addprefix $(OBJ_DIR)/, $(addsuffix .o, $(SRC_FILES)))
 # config for libraries, dont forget to edit upclangd target
 BREW_PREFIX := /opt/homebrew/Cellar
 
-SDL3_PREFIX:= $(BREW_PREFIX)/sdl3/3.2.8
+SDL3_PREFIX:= $(BREW_PREFIX)/sdl3/3.2.10
 SDL3_CFLAGS := -I$(SDL3_PREFIX)/include 
 SDL3_LDFLAGS := -L$(SDL3_PREFIX)/lib -lsdl3 
 
@@ -26,8 +26,8 @@ SDL3_LDFLAGS := -L$(SDL3_PREFIX)/lib -lsdl3
 # FFMPEG_LDFLAGS := -L$(FFMPEG_PREFIX)/lib -lavcodec
 
 FLAGS := -fsanitize=address -fsanitize=undefined
-CFLAGS := $(FLAGS) -Wall -Wextra -g -MMD -MP $(SDL3_CFLAGS)
-LDFLAGS := $(FLAGS) $(SDL3_LDFLAGS)
+CFLAGS := -Wall -Wextra -g -MMD -MP $(SDL3_CFLAGS)
+LDFLAGS := $(SDL3_LDFLAGS)
 
 ## select compiler
 # CXX := clang
