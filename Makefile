@@ -17,14 +17,6 @@ SDL3_PREFIX:= $(BREW_PREFIX)/sdl3/3.2.10
 SDL3_CFLAGS := -I$(SDL3_PREFIX)/include 
 SDL3_LDFLAGS := -L$(SDL3_PREFIX)/lib -lsdl3 
 
-# SDL3_IMG_PREFIX:= $(BREW_PREFIX)/sdl3_image/3.2.0
-# SDL3_IMG_CFLAGS := -I$(SDL3_IMG_PREFIX)/include
-# SDL3_IMG_LDFLAGS := -L$(SDL3_IMG_PREFIX)/lib -lsdl3_image
-
-# FFMPEG_PREFIX := $(BREW_PREFIX)/ffmpeg/7.1_4
-# FFMPEG_CFLAGS := -I$(FFMPEG_PREFIX)/include
-# FFMPEG_LDFLAGS := -L$(FFMPEG_PREFIX)/lib -lavcodec
-
 FLAGS := -fsanitize=address -fsanitize=undefined
 CFLAGS := -Wall -Wextra -g -MMD -MP $(SDL3_CFLAGS)
 LDFLAGS := $(SDL3_LDFLAGS)
@@ -63,7 +55,6 @@ upclangd:
 	echo "CompileFlags:" > .clangd
 	echo "  Add: [" >> .clangd
 	echo "    $(SRC_DIR), $(SDL3_CFLAGS)" >> .clangd
-	# echo "    $(SRC_DIR), $(SDL3_CFLAGS), $(SDL3_IMG_CFLAGS), $(FFMPEG_CFLAGS)" >> .clangd
 	echo "  ]" >> .clangd
 
 # Make sure directories exist
